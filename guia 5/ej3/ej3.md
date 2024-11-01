@@ -15,6 +15,8 @@ int driver_read(int *data){
     sem_wait(&mutex);
     int status;
     while(!(status = (IN(BTN_STATUS) & 0x00000001))){} // polling
+
+    // reseteamos el boton
     OUT(BTN_STATUS, status & 0xFFFFFFFC); 
     sem_signal(&mutex);
 
