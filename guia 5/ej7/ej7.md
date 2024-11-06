@@ -43,25 +43,27 @@ int driver_init(){
 
 
 ```C
-
-bool skip_timer;
+bool timer;
+int tick_counter;
 semaphore mutex, sem_arm, sem_status;
 
 int write(int sector, void* data){
 
     sema_wait(&mutex);
 
-    // check motor encendido
     if(IN(DOR_STATUS == 0)) OUT(DOR_IO, 1);
-    skip_timer = false
-    for(int i=0; i<2; i++) sema_wait(&sem_timer);
-    skip_timer = true;
+
+    tick_counter = 2;
+    timer = true
+    while(tick_counter) sema_wait(&sem_timer);
+
 
     // seleccionamos pista y sector
     int pista = sector / cant_sectores_por_pista();
     OUT(ARM, pista);
 
-    sema_wait(&sem_arm);
+    // esperamos a que se posicione
+    sema_wait(&sem_ready);
 
     OUT(SEEK_SECTOR, sector);
 
@@ -71,13 +73,14 @@ int write(int sector, void* data){
     escribir_datos(kdata);
 
     // esperamos a que termine la escritura
-    sema_wait(&sem_status);
+    sema_wait(&sem_ready);
 
     // al final, apagamos el motor
     OUT(DOR_IO, 0);
-    skip_timer = false;
-    for(int i=0; i<5; i++) sema_wait(&sem_timer);
-    skip_timer = true;
+    
+    tick_counter = 5;
+    timer = true
+    while(tick_counter) sema_wait(&sem_timer);
 
     sema_signal(&mutex);
 
@@ -88,8 +91,8 @@ int driver_init(){
     skip_timer = true;
 
     sema_init(&mutex, 1);
-    sema_init(&sem_arm, 0);
-    sema_init(&sem_status, 0);
+    sema_init(&sem_ready, 0);
+    sema_init(&sem_timer, 0);
 
     request_irq(IRQ6, handler_status);
     request_irq(IRQ7, handler_timer);
@@ -97,18 +100,23 @@ int driver_init(){
     return IO_OK;
 }
 
-void handler_status(){
-
-
-}
-
 void handler_timer(){
-    if(!skip_timer) sema_signal(&sem_timer);
+    if(timer)
+        if(tick_counter--)
+            sema_signal(&sem_timer);
+        else timer = false;
 }
+
+void handler_status(){
+    // no puede haber 2 instancias write tratando de escribir al mismo tiempo,
+    // asi que esto no tiene problemas.
+    sema_signal(&sem_ready);
+}
+
 
 int driver_close(){
-    free_irq(handler_status);
-    free_irq(handler_timer);
+    free_irq(IRQ6);
+    free_irq(IRQ7);
 }
 
 
